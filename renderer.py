@@ -18,8 +18,7 @@ LINE_SPACING = 8
 MEDIA_GAP = 12
 QUOTE_MEDIA_HEIGHT = 240
 FONTS_DIR = Path(__file__).resolve().parent / "fonts"
-EXTREME_ASPECT_RATIO = 2.4
-VERTICAL_CROP_START_RATIO = 1.2
+EXTREME_ASPECT_RATIO = 5.0
 QR_SIZE = 88
 
 
@@ -252,20 +251,12 @@ def _fit_media_image(image: Image.Image, size: Tuple[int, int], background_color
     if image_ratio >= EXTREME_ASPECT_RATIO:
         return ImageOps.fit(image, size, method=Image.Resampling.LANCZOS)
 
-    scaled_height = max(1, int(source_height * (target_width / source_width)))
-    resized = image.resize((target_width, scaled_height), Image.Resampling.LANCZOS)
-    portrait_ratio = source_height / source_width
-
-    if scaled_height <= target_height or portrait_ratio <= VERTICAL_CROP_START_RATIO:
-        canvas = Image.new("RGB", size, background_color)
-        contained = ImageOps.contain(image, size, method=Image.Resampling.LANCZOS)
-        offset_x = (target_width - contained.width) // 2
-        offset_y = (target_height - contained.height) // 2
-        canvas.paste(contained, (offset_x, offset_y))
-        return canvas
-
-    top = (scaled_height - target_height) // 2
-    return resized.crop((0, top, target_width, top + target_height))
+    canvas = Image.new("RGB", size, background_color)
+    contained = ImageOps.contain(image, size, method=Image.Resampling.LANCZOS)
+    offset_x = (target_width - contained.width) // 2
+    offset_y = (target_height - contained.height) // 2
+    canvas.paste(contained, (offset_x, offset_y))
+    return canvas
 
 
 def _draw_stats(draw: ImageDraw.ImageDraw, tweet: TweetData, font: ImageFont.ImageFont, start_x: int, y: int, color) -> int:
