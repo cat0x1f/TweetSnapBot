@@ -2,7 +2,7 @@ import unittest
 
 from PIL import Image, ImageDraw
 
-from renderer import FONTS_DIR, _is_emoji, _layout_text, _load_font
+from renderer import FONTS_DIR, _is_emoji, _layout_text, _load_font, _segment_text
 
 
 class FontTests(unittest.TestCase):
@@ -28,6 +28,11 @@ class RendererTests(unittest.TestCase):
         lines = _layout_text(draw, "hello🙂", font, emoji_font, 400)
         self.assertTrue(_is_emoji("🙂"))
         self.assertTrue(any(item[1] is emoji_font for item in lines[0] if item[0] == "🙂"))
+
+    def test_segment_text_keeps_emoji_sequences_together(self) -> None:
+        self.assertIn("🧑‍💻", _segment_text("A🧑‍💻B"))
+        self.assertIn("🇨🇳", _segment_text("A🇨🇳B"))
+        self.assertIn("👍🏻", _segment_text("A👍🏻B"))
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ class TweetData:
     views: int = 0
     author: TweetAuthor = field(default_factory=lambda: TweetAuthor(name="", screen_name=""))
     media: List[TweetMedia] = field(default_factory=list)
+    quote: Optional["TweetData"] = None
 
 
 class FxTwitterClient:
@@ -87,6 +88,9 @@ class FxTwitterClient:
             views=int(stats.get("views") or tweet.get("views") or 0),
             author=author,
             media=[item for item in media if item.url],
+            quote=self._parse_tweet_data(tweet["quote"], tweet["quote"].get("url") or tweet_url)
+            if isinstance(tweet.get("quote"), dict)
+            else None,
         )
 
     def _parse_media(self, media_payload) -> List[TweetMedia]:

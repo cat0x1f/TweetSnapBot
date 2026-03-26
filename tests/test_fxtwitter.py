@@ -87,6 +87,30 @@ class FxTwitterTests(unittest.TestCase):
         self.assertEqual(tweet.media[0].url, "https://example.com/p1.jpg")
         self.assertEqual(tweet.media[1].url, "https://example.com/p2.jpg")
 
+    def test_parse_tweet_data_supports_quote_tweet(self) -> None:
+        client = FxTwitterClient("https://api.fxtwitter.com")
+        payload = {
+            "tweet": {
+                "id": "100",
+                "text": "outer",
+                "author": {"name": "Outer", "screen_name": "outer"},
+                "quote": {
+                    "id": "101",
+                    "text": "quoted text",
+                    "url": "https://x.com/quoted/status/101",
+                    "author": {"name": "Quoted", "screen_name": "quoted"},
+                    "media": {
+                        "photos": [{"url": "https://example.com/q.jpg", "type": "photo"}],
+                    },
+                },
+            }
+        }
+        tweet = client._parse_tweet_data(payload, "https://x.com/outer/status/100")
+        self.assertIsNotNone(tweet.quote)
+        self.assertEqual(tweet.quote.text, "quoted text")
+        self.assertEqual(tweet.quote.author.screen_name, "quoted")
+        self.assertEqual(tweet.quote.media[0].url, "https://example.com/q.jpg")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,4 +1,5 @@
 import io
+import unicodedata
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -14,6 +15,7 @@ AVATAR_SIZE = 96
 MEDIA_HEIGHT = 560
 LINE_SPACING = 8
 MEDIA_GAP = 12
+QUOTE_MEDIA_HEIGHT = 240
 FONTS_DIR = Path(__file__).resolve().parent / "fonts"
 
 
@@ -72,12 +74,83 @@ def _is_emoji(char: str) -> bool:
     )
 
 
+def _is_regional_indicator(char: str) -> bool:
+    codepoint = ord(char)
+    return 0x1F1E6 <= codepoint <= 0x1F1FF
+
+
+def _is_skin_tone_modifier(char: str) -> bool:
+    codepoint = ord(char)
+    return 0x1F3FB <= codepoint <= 0x1F3FF
+
+
+def _is_variation_selector(char: str) -> bool:
+    codepoint = ord(char)
+    return 0xFE00 <= codepoint <= 0xFE0F or 0xE0100 <= codepoint <= 0xE01EF
+
+
+def _is_keycap_combiner(char: str) -> bool:
+    return ord(char) == 0x20E3
+
+
+def _should_use_emoji_font(segment: str) -> bool:
+    return any(_is_emoji(char) for char in segment)
+
+
+def _segment_text(text: str) -> List[str]:
+    clusters: List[str] = []
+    i = 0
+    while i < len(text):
+        cluster = text[i]
+        i += 1
+
+        while i < len(text) and (_is_variation_selector(text[i]) or unicodedata.combining(text[i])):
+            cluster += text[i]
+            i += 1
+
+        if i < len(text) and _is_skin_tone_modifier(text[i]):
+            cluster += text[i]
+            i += 1
+            while i < len(text) and (_is_variation_selector(text[i]) or unicodedata.combining(text[i])):
+                cluster += text[i]
+                i += 1
+
+        if i < len(text) and _is_keycap_combiner(text[i]):
+            cluster += text[i]
+            i += 1
+
+        if _is_regional_indicator(cluster[0]) and i < len(text) and _is_regional_indicator(text[i]):
+            cluster += text[i]
+            i += 1
+
+        while i < len(text) and ord(text[i]) == 0x200D:
+            cluster += text[i]
+            i += 1
+            if i >= len(text):
+                break
+            cluster += text[i]
+            i += 1
+            while i < len(text) and (_is_variation_selector(text[i]) or unicodedata.combining(text[i])):
+                cluster += text[i]
+                i += 1
+            if i < len(text) and _is_skin_tone_modifier(text[i]):
+                cluster += text[i]
+                i += 1
+                while i < len(text) and (_is_variation_selector(text[i]) or unicodedata.combining(text[i])):
+                    cluster += text[i]
+                    i += 1
+
+        clusters.append(cluster)
+
+    return clusters
+
+
 def _pick_font(
     text_font: ImageFont.ImageFont,
     emoji_font: ImageFont.ImageFont,
-    char: str,
+    segment: str,
 ) -> ImageFont.ImageFont:
-    if _is_emoji(char):
+    if _should_use_emoji_font(segment):
         return emoji_font
     return text_font
 
@@ -93,16 +166,16 @@ def _layout_text(
     for raw_line in (text or "").splitlines() or [""]:
         current: List[Tuple[str, ImageFont.ImageFont, float]] = []
         current_width = 0.0
-        for char in raw_line:
-            font = _pick_font(text_font, emoji_font, char)
-            char_width = draw.textlength(char, font=font)
-            if current and current_width + char_width > width:
+        for segment in _segment_text(raw_line):
+            font = _pick_font(text_font, emoji_font, segment)
+            segment_width = draw.textlength(segment, font=font)
+            if current and current_width + segment_width > width:
                 lines.append(current)
-                current = [(char, font, char_width)]
-                current_width = char_width
+                current = [(segment, font, segment_width)]
+                current_width = segment_width
             else:
-                current.append((char, font, char_width))
-                current_width += char_width
+                current.append((segment, font, segment_width))
+                current_width += segment_width
         lines.append(current)
     return lines
 
@@ -193,6 +266,14 @@ def _media_block_height(media_count: int) -> int:
     return MEDIA_HEIGHT + 80
 
 
+def _quote_media_block_height(media_count: int) -> int:
+    if media_count <= 0:
+        return 0
+    if media_count == 1:
+        return QUOTE_MEDIA_HEIGHT
+    return QUOTE_MEDIA_HEIGHT + 56
+
+
 def _build_media_collage(
     client: FxTwitterClient,
     media_items: List[TweetMedia],
@@ -238,11 +319,101 @@ def _build_media_collage(
     return canvas
 
 
+def _measure_quote_block(
+    draw: ImageDraw.ImageDraw,
+    quote: TweetData,
+    text_font: ImageFont.ImageFont,
+    emoji_font: ImageFont.ImageFont,
+    meta_font: ImageFont.ImageFont,
+    width: int,
+) -> Tuple[List[List[Tuple[str, ImageFont.ImageFont, float]]], int, int]:
+    quote_lines, quote_text_height = _measure_text_block(
+        draw,
+        quote.text or quote.url,
+        text_font,
+        emoji_font,
+        width - 32,
+    )
+    media_height = _quote_media_block_height(len(quote.media))
+    total_height = 24 + meta_font.size + 14 + quote_text_height + 20
+    if media_height:
+        total_height += media_height + 20
+    return quote_lines, quote_text_height, total_height
+
+
+def _draw_quote_block(
+    canvas: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    width: int,
+    quote: TweetData,
+    client: FxTwitterClient,
+    text_font: ImageFont.ImageFont,
+    emoji_font: ImageFont.ImageFont,
+    meta_font: ImageFont.ImageFont,
+    primary_color,
+    secondary_color,
+    border_color,
+    background_color,
+) -> int:
+    quote_lines, quote_text_height, total_height = _measure_quote_block(
+        draw,
+        quote,
+        text_font,
+        emoji_font,
+        meta_font,
+        width,
+    )
+    draw.rectangle(
+        (x, y, x + width, y + total_height),
+        outline=border_color,
+        width=2,
+        fill=background_color,
+    )
+
+    cursor_y = y + 16
+    title = quote.author.name or "Unknown"
+    if quote.author.screen_name:
+        title = f"{title} @{quote.author.screen_name}"
+    draw.text((x + 16, cursor_y), title, font=meta_font, fill=primary_color)
+    cursor_y += meta_font.size + 14
+
+    text_height = _draw_rich_text(
+        draw,
+        x + 16,
+        cursor_y,
+        quote_lines,
+        primary_color,
+    )
+    cursor_y += text_height + 20
+
+    media_height = _quote_media_block_height(len(quote.media))
+    if media_height:
+        media_image = _build_media_collage(
+            client,
+            quote.media,
+            width - 32,
+            media_height,
+            border_color,
+        )
+        if media_image:
+            canvas.paste(media_image, (x + 16, cursor_y))
+            draw.rectangle(
+                (x + 16, cursor_y, x + 16 + width - 32, cursor_y + media_height),
+                outline=border_color,
+                width=2,
+            )
+            cursor_y += media_height + 20
+
+    return total_height
+
+
 def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: SessionConfig) -> bytes:
     background_color, primary_color, secondary_color, border_color = _theme_colors(config)
     bold_font = _load_font(40, bold=False)
     body_font = _load_font(36)
-    emoji_font = _load_font(42, emoji=True)
+    emoji_font = _load_font(36, emoji=True)
     meta_font = _load_font(28)
 
     probe = Image.new("RGB", (CANVAS_WIDTH, 1200), background_color)
@@ -258,6 +429,17 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
     )
 
     total_height = CARD_PADDING * 2 + AVATAR_SIZE + 32 + text_height + 32
+    quote_height = 0
+    if tweet.quote:
+        _, _, quote_height = _measure_quote_block(
+            probe_draw,
+            tweet.quote,
+            _load_font(30),
+            _load_font(30, emoji=True),
+            _load_font(24),
+            text_width,
+        )
+        total_height += quote_height + 24
     media_height = _media_block_height(len(tweet.media))
     if media_height:
         total_height += media_height + 32
@@ -295,6 +477,25 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
         primary_color,
     )
     cursor_y += rendered_text_height + 32
+
+    if tweet.quote:
+        quote_height = _draw_quote_block(
+            canvas,
+            draw,
+            CARD_PADDING,
+            cursor_y,
+            CANVAS_WIDTH - CARD_PADDING * 2,
+            tweet.quote,
+            client,
+            _load_font(30),
+            _load_font(30, emoji=True),
+            _load_font(24),
+            primary_color,
+            secondary_color,
+            border_color,
+            background_color,
+        )
+        cursor_y += quote_height + 24
 
     if media_height:
         media_image = _build_media_collage(
