@@ -17,6 +17,7 @@ LINE_SPACING = 8
 MEDIA_GAP = 12
 QUOTE_MEDIA_HEIGHT = 240
 FONTS_DIR = Path(__file__).resolve().parent / "fonts"
+EXTREME_ASPECT_RATIO = 2.4
 
 
 def _load_font(size: int, bold: bool = False, emoji: bool = False) -> ImageFont.ImageFont:
@@ -238,6 +239,24 @@ def _download_image(client: FxTwitterClient, url: Optional[str], size: Optional[
         return None
 
 
+def _fit_media_image(image: Image.Image, size: Tuple[int, int], background_color) -> Image.Image:
+    target_width, target_height = size
+    source_width, source_height = image.size
+    if not source_width or not source_height:
+        return Image.new("RGB", size, background_color)
+
+    image_ratio = max(source_width / source_height, source_height / source_width)
+    if image_ratio >= EXTREME_ASPECT_RATIO:
+        return ImageOps.fit(image, size, method=Image.Resampling.LANCZOS)
+
+    canvas = Image.new("RGB", size, background_color)
+    contained = ImageOps.contain(image, size, method=Image.Resampling.LANCZOS)
+    offset_x = (target_width - contained.width) // 2
+    offset_y = (target_height - contained.height) // 2
+    canvas.paste(contained, (offset_x, offset_y))
+    return canvas
+
+
 def _draw_stats(draw: ImageDraw.ImageDraw, tweet: TweetData, font: ImageFont.ImageFont, start_x: int, y: int, color) -> int:
     stats = [
         f"Reply {tweet.replies}",
@@ -280,6 +299,7 @@ def _build_media_collage(
     width: int,
     height: int,
     border_color,
+    background_color,
 ) -> Optional[Image.Image]:
     images: List[Image.Image] = []
     for media in media_items[:4]:
@@ -294,7 +314,7 @@ def _build_media_collage(
     count = len(images)
 
     if count == 1:
-        return ImageOps.fit(images[0], (width, height), method=Image.Resampling.LANCZOS)
+        return _fit_media_image(images[0], (width, height), background_color)
 
     if count == 2:
         tile_width = (width - MEDIA_GAP) // 2
@@ -313,7 +333,7 @@ def _build_media_collage(
         ]
 
     for image, (x, y, w, h) in zip(images, slots):
-        tile = ImageOps.fit(image, (w, h), method=Image.Resampling.LANCZOS)
+        tile = _fit_media_image(image, (w, h), background_color)
         canvas.paste(tile, (x, y))
 
     return canvas
@@ -396,6 +416,7 @@ def _draw_quote_block(
             width - 32,
             media_height,
             border_color,
+            background_color,
         )
         if media_image:
             canvas.paste(media_image, (x + 16, cursor_y))
@@ -429,6 +450,14 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
     )
 
     total_height = CARD_PADDING + AVATAR_SIZE + 32 + text_height + 32
+    media_height = _media_block_height(len(tweet.media))
+    place_quote_at_bottom = bool(tweet.quote and media_height)
+    if media_height:
+        total_height += media_height + 32
+    if config.show_timestamp and tweet.created_at:
+        total_height += meta_font.size + 24
+    if config.show_stats:
+        total_height += meta_font.size + 20
     quote_height = 0
     if tweet.quote:
         _, _, quote_height = _measure_quote_block(
@@ -440,13 +469,6 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
             text_width,
         )
         total_height += quote_height + 24
-    media_height = _media_block_height(len(tweet.media))
-    if media_height:
-        total_height += media_height + 32
-    if config.show_timestamp and tweet.created_at:
-        total_height += meta_font.size + 24
-    if config.show_stats:
-        total_height += meta_font.size + 20
     total_height += CARD_PADDING
 
     canvas = Image.new("RGB", (CANVAS_WIDTH, total_height), background_color)
@@ -479,7 +501,7 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
     )
     cursor_y += rendered_text_height + 32
 
-    if tweet.quote:
+    if tweet.quote and not place_quote_at_bottom:
         quote_height = _draw_quote_block(
             canvas,
             draw,
@@ -505,6 +527,7 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
             CANVAS_WIDTH - CARD_PADDING * 2,
             media_height,
             border_color,
+            background_color,
         )
         if media_image:
             canvas.paste(media_image, (CARD_PADDING, cursor_y))
@@ -519,6 +542,25 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
                 width=2,
             )
         cursor_y += media_height + 32
+
+    if tweet.quote and place_quote_at_bottom:
+        quote_height = _draw_quote_block(
+            canvas,
+            draw,
+            CARD_PADDING,
+            cursor_y,
+            CANVAS_WIDTH - CARD_PADDING * 2,
+            tweet.quote,
+            client,
+            _load_font(30),
+            _load_font(30, emoji=True),
+            _load_font(24),
+            primary_color,
+            secondary_color,
+            border_color,
+            background_color,
+        )
+        cursor_y += quote_height + 24
 
     if config.show_timestamp and tweet.created_at:
         draw.text((CARD_PADDING, cursor_y), tweet.created_at, font=meta_font, fill=secondary_color)
