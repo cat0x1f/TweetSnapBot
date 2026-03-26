@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
+import time
 from html import escape
 from typing import Optional
 
@@ -16,6 +17,8 @@ from renderer import render_tweet_card
 
 
 LOGGER = logging.getLogger(__name__)
+INITIAL_RETRY_DELAY_SECONDS = 5
+MAX_RETRY_DELAY_SECONDS = 300
 
 
 def configure_logging(level_name: str) -> None:
@@ -171,8 +174,34 @@ def main() -> None:
     settings = load_settings()
     configure_logging(settings.log_level)
     LOGGER.info("Starting TweetSnapBot with %s sessions", len(settings.sessions))
-    application = build_application(settings)
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    retry_delay = INITIAL_RETRY_DELAY_SECONDS
+    while True:
+        application: Optional[Application] = None
+        try:
+            application = build_application(settings)
+            application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                bootstrap_retries=-1,
+                close_loop=False,
+            )
+            retry_delay = INITIAL_RETRY_DELAY_SECONDS
+        except KeyboardInterrupt:
+            LOGGER.info("Stopping TweetSnapBot")
+            break
+        except Exception:
+            LOGGER.exception(
+                "Bot polling stopped due to a Telegram connection/runtime error. Restarting in %s seconds.",
+                retry_delay,
+            )
+            time.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, MAX_RETRY_DELAY_SECONDS)
+        finally:
+            if application is not None:
+                try:
+                    application.stop_running()
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":

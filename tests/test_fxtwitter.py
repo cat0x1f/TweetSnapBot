@@ -26,10 +26,10 @@ class FxTwitterTests(unittest.TestCase):
             "tweet": {
                 "id": "123",
                 "url": "https://x.com/example/status/123",
-                "text": "hello world",
+                "text": "中文测试 hello world",
                 "created_at": "2026-03-26",
                 "author": {
-                    "name": "Example",
+                    "name": "测试用户",
                     "screen_name": "example",
                     "avatar_url": "https://example.com/avatar.jpg",
                 },
@@ -42,6 +42,50 @@ class FxTwitterTests(unittest.TestCase):
         self.assertEqual(tweet.author.screen_name, "example")
         self.assertEqual(tweet.media[0].url, "https://example.com/image.jpg")
         self.assertEqual(tweet.views, 10)
+        self.assertEqual(tweet.author.name, "测试用户")
+
+    def test_parse_tweet_data_accepts_alternate_media_fields(self) -> None:
+        client = FxTwitterClient("https://api.fxtwitter.com")
+        payload = {
+            "tweet": {
+                "id": "456",
+                "author": {},
+                "media": [
+                    {
+                        "media_url": "https://example.com/1.jpg",
+                        "thumbUrl": "https://example.com/1-thumb.jpg",
+                    },
+                    {
+                        "imageUrl": "https://example.com/2.jpg",
+                    },
+                ],
+            }
+        }
+        tweet = client._parse_tweet_data(payload, "https://x.com/example/status/456")
+        self.assertEqual(len(tweet.media), 2)
+        self.assertEqual(tweet.media[0].url, "https://example.com/1.jpg")
+        self.assertEqual(tweet.media[0].thumbnail_url, "https://example.com/1-thumb.jpg")
+        self.assertEqual(tweet.media[1].url, "https://example.com/2.jpg")
+
+    def test_parse_tweet_data_accepts_wiki_media_object_shape(self) -> None:
+        client = FxTwitterClient("https://api.fxtwitter.com")
+        payload = {
+            "tweet": {
+                "id": "789",
+                "author": {},
+                "media": {
+                    "photos": [
+                        {"url": "https://example.com/p1.jpg", "type": "photo"},
+                        {"url": "https://example.com/p2.jpg", "type": "photo"},
+                    ],
+                    "videos": [],
+                },
+            }
+        }
+        tweet = client._parse_tweet_data(payload, "https://x.com/example/status/789")
+        self.assertEqual(len(tweet.media), 2)
+        self.assertEqual(tweet.media[0].url, "https://example.com/p1.jpg")
+        self.assertEqual(tweet.media[1].url, "https://example.com/p2.jpg")
 
 
 if __name__ == "__main__":

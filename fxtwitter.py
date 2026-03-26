@@ -66,22 +66,9 @@ class FxTwitterClient:
     def _parse_tweet_data(self, payload: Dict, tweet_url: str) -> TweetData:
         tweet = payload.get("tweet") or payload
         author_data = tweet.get("author") or {}
-        media_items = tweet.get("media") or []
         stats = tweet.get("stats") or {}
 
-        media: List[TweetMedia] = []
-        for item in media_items:
-            if not isinstance(item, dict):
-                continue
-            media.append(
-                TweetMedia(
-                    url=item.get("url") or item.get("source") or "",
-                    thumbnail_url=item.get("thumbnail_url") or item.get("thumbnailUrl"),
-                    type=str(item.get("type") or "photo"),
-                    width=item.get("width"),
-                    height=item.get("height"),
-                )
-            )
+        media: List[TweetMedia] = self._parse_media(tweet.get("media"))
 
         author = TweetAuthor(
             name=author_data.get("name") or author_data.get("display_name") or "",
@@ -101,3 +88,70 @@ class FxTwitterClient:
             author=author,
             media=[item for item in media if item.url],
         )
+
+    def _parse_media(self, media_payload) -> List[TweetMedia]:
+        if not media_payload:
+            return []
+
+        if isinstance(media_payload, list):
+            return self._parse_media_items(media_payload)
+
+        if not isinstance(media_payload, dict):
+            return []
+
+        ordered = media_payload.get("all")
+        if isinstance(ordered, list) and ordered:
+            return self._parse_media_items(ordered)
+
+        photos = media_payload.get("photos") or []
+        videos = media_payload.get("videos") or []
+        items: List[Dict] = []
+        if isinstance(photos, list):
+            items.extend(item for item in photos if isinstance(item, dict))
+        if isinstance(videos, list):
+            items.extend(item for item in videos if isinstance(item, dict))
+
+        mosaic = media_payload.get("mosaic")
+        if isinstance(mosaic, dict):
+            formats = mosaic.get("formats") or {}
+            mosaic_url = formats.get("jpeg") or formats.get("webp")
+            if mosaic_url:
+                items.append(
+                    {
+                        "type": mosaic.get("type") or "mosaic_photo",
+                        "url": mosaic_url,
+                        "width": mosaic.get("width"),
+                        "height": mosaic.get("height"),
+                    }
+                )
+
+        return self._parse_media_items(items)
+
+    def _parse_media_items(self, media_items: List[Dict]) -> List[TweetMedia]:
+        media: List[TweetMedia] = []
+        for item in media_items:
+            if not isinstance(item, dict):
+                continue
+            media.append(
+                TweetMedia(
+                    url=(
+                        item.get("url")
+                        or item.get("source")
+                        or item.get("media_url")
+                        or item.get("mediaUrl")
+                        or item.get("image_url")
+                        or item.get("imageUrl")
+                        or ""
+                    ),
+                    thumbnail_url=(
+                        item.get("thumbnail_url")
+                        or item.get("thumbnailUrl")
+                        or item.get("thumb_url")
+                        or item.get("thumbUrl")
+                    ),
+                    type=str(item.get("type") or "photo"),
+                    width=item.get("width"),
+                    height=item.get("height"),
+                )
+            )
+        return media
