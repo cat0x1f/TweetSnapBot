@@ -78,7 +78,7 @@ class FxTwitterTests(unittest.TestCase):
                         {"url": "https://example.com/p1.jpg", "type": "photo"},
                         {"url": "https://example.com/p2.jpg", "type": "photo"},
                     ],
-                    "videos": [],
+                    "videos": [{"url": "https://example.com/video.mp4", "type": "video"}],
                 },
             }
         }

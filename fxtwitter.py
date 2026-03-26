@@ -104,26 +104,9 @@ class FxTwitterClient:
             return self._parse_media_items(ordered)
 
         photos = media_payload.get("photos") or []
-        videos = media_payload.get("videos") or []
         items: List[Dict] = []
         if isinstance(photos, list):
             items.extend(item for item in photos if isinstance(item, dict))
-        if isinstance(videos, list):
-            items.extend(item for item in videos if isinstance(item, dict))
-
-        mosaic = media_payload.get("mosaic")
-        if isinstance(mosaic, dict):
-            formats = mosaic.get("formats") or {}
-            mosaic_url = formats.get("jpeg") or formats.get("webp")
-            if mosaic_url:
-                items.append(
-                    {
-                        "type": mosaic.get("type") or "mosaic_photo",
-                        "url": mosaic_url,
-                        "width": mosaic.get("width"),
-                        "height": mosaic.get("height"),
-                    }
-                )
 
         return self._parse_media_items(items)
 
@@ -131,6 +114,9 @@ class FxTwitterClient:
         media: List[TweetMedia] = []
         for item in media_items:
             if not isinstance(item, dict):
+                continue
+            media_type = str(item.get("type") or "photo")
+            if "video" in media_type.lower() or "gif" in media_type.lower():
                 continue
             media.append(
                 TweetMedia(
@@ -149,7 +135,7 @@ class FxTwitterClient:
                         or item.get("thumb_url")
                         or item.get("thumbUrl")
                     ),
-                    type=str(item.get("type") or "photo"),
+                    type=media_type,
                     width=item.get("width"),
                     height=item.get("height"),
                 )
