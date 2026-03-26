@@ -6,8 +6,10 @@ import time
 from html import escape
 from typing import Optional
 
+from PIL import Image
 from telegram import InputFile, Update
 from telegram.constants import ChatType
+from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from config import SessionConfig, Settings, load_settings
@@ -19,6 +21,7 @@ from renderer import render_tweet_card
 LOGGER = logging.getLogger(__name__)
 INITIAL_RETRY_DELAY_SECONDS = 5
 MAX_RETRY_DELAY_SECONDS = 300
+DOCUMENT_FALLBACK_ASPECT_RATIO = 3.0
 
 
 def configure_logging(level_name: str) -> None:
@@ -93,9 +96,32 @@ async def send_screenshot(
     filename: str,
     caption: str,
 ) -> None:
+    image = Image.open(io.BytesIO(screenshot_bytes))
+    width, height = image.size
+    force_document = max(width / height, height / width) > DOCUMENT_FALLBACK_ASPECT_RATIO
+
     for chat_id in session.targets:
         file_obj = InputFile(io.BytesIO(screenshot_bytes), filename=filename)
-        await context.bot.send_photo(chat_id=chat_id, photo=file_obj, caption=caption)
+        if force_document:
+            LOGGER.info(
+                "Rendered image aspect ratio exceeds threshold, use send_document chat_id=%s size=%sx%s",
+                chat_id,
+                width,
+                height,
+            )
+            await context.bot.send_document(chat_id=chat_id, document=file_obj, caption=caption)
+            continue
+
+        try:
+            await context.bot.send_photo(chat_id=chat_id, photo=file_obj, caption=caption)
+        except BadRequest:
+            LOGGER.warning(
+                "send_photo failed for chat_id=%s filename=%s, fallback to send_document",
+                chat_id,
+                filename,
+            )
+            file_obj = InputFile(io.BytesIO(screenshot_bytes), filename=filename)
+            await context.bot.send_document(chat_id=chat_id, document=file_obj, caption=caption)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

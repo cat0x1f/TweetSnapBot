@@ -20,6 +20,8 @@ QUOTE_MEDIA_HEIGHT = 240
 FONTS_DIR = Path(__file__).resolve().parent / "fonts"
 EXTREME_ASPECT_RATIO = 5.0
 QR_SIZE = 88
+POST_MEDIA_SPACING = 20
+BOTTOM_PADDING = 20
 
 
 def _load_font(size: int, bold: bool = False, emoji: bool = False) -> ImageFont.ImageFont:
@@ -191,9 +193,35 @@ def _measure_text_block(
     width: int,
 ) -> Tuple[List[List[Tuple[str, ImageFont.ImageFont, float]]], int]:
     lines = _layout_text(draw, text, text_font, emoji_font, width)
-    line_height = max(text_font.size, emoji_font.size)
-    line_count = max(1, len(lines))
-    return lines, line_count * line_height + max(0, line_count - 1) * LINE_SPACING
+    return lines, _measure_lines_height(lines, text_font)
+
+
+def _font_line_height(font: ImageFont.ImageFont) -> int:
+    try:
+        ascent, descent = font.getmetrics()
+        return ascent + descent
+    except Exception:
+        return getattr(font, "size", 0) or 0
+
+
+def _measure_lines_height(
+    lines: List[List[Tuple[str, ImageFont.ImageFont, float]]],
+    fallback_font: ImageFont.ImageFont,
+) -> int:
+    if not lines:
+        return _font_line_height(fallback_font)
+
+    total = 0
+    for line in lines:
+        if not line:
+            total += _font_line_height(fallback_font)
+            continue
+        line_height = max(_font_line_height(font) for _, font, _ in line)
+        total += line_height
+    total += max(0, len(lines) - 1) * LINE_SPACING
+    return total
+
+
 
 
 def _draw_rich_text(
@@ -295,6 +323,16 @@ def _quote_media_block_height(media_count: int) -> int:
     return QUOTE_MEDIA_HEIGHT + 56
 
 
+def _single_media_target_height(
+    media: TweetMedia,
+    target_width: int,
+    fallback_height: int,
+) -> int:
+    if not media.width or not media.height or media.width <= 0 or media.height <= 0:
+        return fallback_height
+    return max(1, int(target_width * (media.height / media.width)))
+
+
 def _build_media_collage(
     client: FxTwitterClient,
     media_items: List[TweetMedia],
@@ -356,7 +394,16 @@ def _measure_quote_block(
         emoji_font,
         width - 32,
     )
-    media_height = _quote_media_block_height(len(quote.media))
+    media_height = 0
+    if quote.media:
+        if len(quote.media) == 1:
+            media_height = _single_media_target_height(
+                quote.media[0],
+                width - 32,
+                QUOTE_MEDIA_HEIGHT,
+            )
+        else:
+            media_height = _quote_media_block_height(len(quote.media))
     total_height = 24 + meta_font.size + 14 + quote_text_height + 20
     if media_height:
         total_height += media_height + 20
@@ -410,7 +457,16 @@ def _draw_quote_block(
     )
     cursor_y += text_height + 20
 
-    media_height = _quote_media_block_height(len(quote.media))
+    media_height = 0
+    if quote.media:
+        if len(quote.media) == 1:
+            media_height = _single_media_target_height(
+                quote.media[0],
+                width - 32,
+                QUOTE_MEDIA_HEIGHT,
+            )
+        else:
+            media_height = _quote_media_block_height(len(quote.media))
     if media_height:
         media_image = _build_media_collage(
             client,
@@ -465,10 +521,19 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
     )
 
     total_height = CARD_PADDING + AVATAR_SIZE + 32 + text_height + 32
-    media_height = _media_block_height(len(tweet.media))
+    media_height = 0
+    if tweet.media:
+        if len(tweet.media) == 1:
+            media_height = _single_media_target_height(
+                tweet.media[0],
+                CANVAS_WIDTH - CARD_PADDING * 2,
+                MEDIA_HEIGHT,
+            )
+        else:
+            media_height = _media_block_height(len(tweet.media))
     place_quote_at_bottom = bool(tweet.quote and media_height)
     if media_height:
-        total_height += media_height + 32
+        total_height += media_height + POST_MEDIA_SPACING
     footer_text_height = 0
     if config.show_timestamp and tweet.created_at:
         footer_text_height += meta_font.size + 24
@@ -486,7 +551,7 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
         )
         total_height += quote_height + 24
     total_height += max(footer_text_height, QR_SIZE)
-    total_height += CARD_PADDING
+    total_height += BOTTOM_PADDING
 
     canvas = Image.new("RGB", (CANVAS_WIDTH, total_height), background_color)
     draw = ImageDraw.Draw(canvas)
@@ -558,7 +623,7 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
                 outline=border_color,
                 width=2,
             )
-        cursor_y += media_height + 32
+        cursor_y += media_height + POST_MEDIA_SPACING
 
     if tweet.quote and place_quote_at_bottom:
         quote_height = _draw_quote_block(
@@ -590,8 +655,19 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
 
     qr_image = _build_qr_code(tweet.url, QR_SIZE, background_color)
     qr_x = CANVAS_WIDTH - CARD_PADDING - QR_SIZE
-    qr_y = timestamp_y if timestamp_y is not None else total_height - CARD_PADDING - QR_SIZE
+    qr_y = timestamp_y if timestamp_y is not None else total_height - BOTTOM_PADDING - QR_SIZE
     canvas.paste(qr_image, (qr_x, qr_y))
+
+    content_bottom = max(cursor_y, qr_y + QR_SIZE)
+    final_height = min(total_height, max(content_bottom + BOTTOM_PADDING, 1))
+    if final_height < total_height:
+        canvas = canvas.crop((0, 0, CANVAS_WIDTH, final_height))
+        draw = ImageDraw.Draw(canvas)
+        draw.rectangle(
+            (0, 0, CANVAS_WIDTH - 1, final_height - 1),
+            outline=border_color,
+            width=2,
+        )
 
     output = io.BytesIO()
     canvas.save(output, format="PNG")
