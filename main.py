@@ -105,6 +105,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not message or not user or not chat:
         return
 
+    LOGGER.info(
+        "Received message chat_id=%s user_id=%s username=%s text=%r",
+        chat.id,
+        user.id,
+        user.username,
+        message.text or message.caption or "",
+    )
+
     settings: Settings = context.application.bot_data["settings"]
     client: FxTwitterClient = context.application.bot_data["fxtwitter_client"]
 

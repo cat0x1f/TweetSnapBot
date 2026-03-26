@@ -3,6 +3,7 @@ import unicodedata
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import qrcode
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from config import SessionConfig
@@ -19,6 +20,7 @@ QUOTE_MEDIA_HEIGHT = 240
 FONTS_DIR = Path(__file__).resolve().parent / "fonts"
 EXTREME_ASPECT_RATIO = 2.4
 VERTICAL_CROP_START_RATIO = 1.2
+QR_SIZE = 88
 
 
 def _load_font(size: int, bold: bool = False, emoji: bool = False) -> ImageFont.ImageFont:
@@ -439,6 +441,19 @@ def _draw_quote_block(
     return total_height
 
 
+def _build_qr_code(data: str, size: int, background_color) -> Image.Image:
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=2,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+    return ImageOps.fit(image, (size, size), method=Image.Resampling.NEAREST)
+
+
 def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: SessionConfig) -> bytes:
     background_color, primary_color, secondary_color, border_color = _theme_colors(config)
     bold_font = _load_font(40, bold=False)
@@ -463,10 +478,11 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
     place_quote_at_bottom = bool(tweet.quote and media_height)
     if media_height:
         total_height += media_height + 32
+    footer_text_height = 0
     if config.show_timestamp and tweet.created_at:
-        total_height += meta_font.size + 24
+        footer_text_height += meta_font.size + 24
     if config.show_stats:
-        total_height += meta_font.size + 20
+        footer_text_height += meta_font.size + 20
     quote_height = 0
     if tweet.quote:
         _, _, quote_height = _measure_quote_block(
@@ -478,6 +494,7 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
             text_width,
         )
         total_height += quote_height + 24
+    total_height += max(footer_text_height, QR_SIZE)
     total_height += CARD_PADDING
 
     canvas = Image.new("RGB", (CANVAS_WIDTH, total_height), background_color)
@@ -571,12 +588,19 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
         )
         cursor_y += quote_height + 24
 
+    timestamp_y: Optional[int] = None
     if config.show_timestamp and tweet.created_at:
+        timestamp_y = cursor_y
         draw.text((CARD_PADDING, cursor_y), tweet.created_at, font=meta_font, fill=secondary_color)
         cursor_y += meta_font.size + 24
 
     if config.show_stats:
         cursor_y = _draw_stats(draw, tweet, meta_font, CARD_PADDING, cursor_y, secondary_color)
+
+    qr_image = _build_qr_code(tweet.url, QR_SIZE, background_color)
+    qr_x = CANVAS_WIDTH - CARD_PADDING - QR_SIZE
+    qr_y = timestamp_y if timestamp_y is not None else total_height - CARD_PADDING - QR_SIZE
+    canvas.paste(qr_image, (qr_x, qr_y))
 
     output = io.BytesIO()
     canvas.save(output, format="PNG")
