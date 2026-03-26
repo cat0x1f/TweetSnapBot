@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 import qrcode
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from config import SessionConfig
+from config import RenderConfig
 from fxtwitter import FxTwitterClient, TweetData, TweetMedia
 
 
@@ -63,7 +63,7 @@ def _set_font_weight(font: ImageFont.FreeTypeFont, variation_name: str) -> None:
         return
 
 
-def _theme_colors(config: SessionConfig) -> Tuple[Tuple[int, int, int], Tuple[int, int, int], Tuple[int, int, int], Tuple[int, int, int]]:
+def _theme_colors(config: RenderConfig) -> Tuple[Tuple[int, int, int], Tuple[int, int, int], Tuple[int, int, int], Tuple[int, int, int]]:
     if config.theme.lower() == "dark":
         return (22, 24, 28), (255, 255, 255), (139, 152, 165), (47, 51, 54)
     return (255, 255, 255), (15, 20, 25), (83, 100, 113), (207, 217, 222)
@@ -501,7 +501,7 @@ def _build_qr_code(data: str, size: int, background_color) -> Image.Image:
     return ImageOps.fit(image, (size, size), method=Image.Resampling.NEAREST)
 
 
-def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: SessionConfig) -> bytes:
+def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: RenderConfig) -> bytes:
     background_color, primary_color, secondary_color, border_color = _theme_colors(config)
     bold_font = _load_font(40, bold=False)
     body_font = _load_font(36)

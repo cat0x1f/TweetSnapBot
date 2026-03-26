@@ -11,7 +11,6 @@ STATUS_URL_RE = re.compile(
 
 @dataclass
 class ParsedRequest:
-    session_name: Optional[str]
     tweet_urls: List[str]
 
 
@@ -29,13 +28,7 @@ def extract_status_id(tweet_url: str) -> Optional[str]:
 def parse_request(text: str) -> ParsedRequest:
     stripped = (text or "").strip()
     if not stripped:
-        return ParsedRequest(session_name=None, tweet_urls=[])
-
-    parts = stripped.split()
-    session_name: Optional[str] = None
-
-    if parts and not parts[0].startswith("http"):
-        session_name = parts[0]
+        return ParsedRequest(tweet_urls=[])
 
     tweet_urls = extract_tweet_urls(stripped)
-    return ParsedRequest(session_name=session_name, tweet_urls=tweet_urls)
+    return ParsedRequest(tweet_urls=tweet_urls)

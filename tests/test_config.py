@@ -2,45 +2,40 @@ import json
 import unittest
 from unittest.mock import patch
 
-from config import DEFAULT_CAPTION_TEMPLATE, load_sessions, load_settings, load_user_sessions
+from config import DEFAULT_CAPTION_TEMPLATE, load_admin_user_ids, load_render_config, load_settings
 
 
 class ConfigTests(unittest.TestCase):
-    def test_load_user_sessions(self) -> None:
-        with patch.dict("os.environ", {"USER_SESSIONS": json.dumps({"123": ["default", "ops"]})}):
-            self.assertEqual(load_user_sessions(), {123: ["default", "ops"]})
+    def test_load_admin_user_ids(self) -> None:
+        with patch.dict("os.environ", {"ADMIN_USER_IDS": json.dumps([123, 456])}):
+            self.assertEqual(load_admin_user_ids(), [123, 456])
 
-    def test_load_sessions(self) -> None:
+    def test_load_render_config(self) -> None:
         with patch.dict(
             "os.environ",
             {
-                "SESSIONS": json.dumps(
-                    {
-                        "default": {
-                            "targets": [123, -1001],
-                            "theme": "dark",
-                            "format": "png",
-                        }
-                    }
-                )
+                "TARGETS": json.dumps([123, -1001]),
+                "THEME": "dark",
+                "FORMAT": "png",
             },
         ):
-            sessions = load_sessions()
-            self.assertEqual(sessions["default"].targets, [123, -1001])
-            self.assertEqual(sessions["default"].theme, "dark")
+            render_config = load_render_config()
+            self.assertEqual(render_config.targets, [123, -1001])
+            self.assertEqual(render_config.theme, "dark")
 
     def test_load_settings(self) -> None:
         with patch.dict(
             "os.environ",
             {
                 "BOT_TOKEN": "token",
-                "USER_SESSIONS": json.dumps({"123": ["default"]}),
-                "SESSIONS": json.dumps({"default": {"targets": [123]}}),
+                "ADMIN_USER_IDS": json.dumps([123]),
+                "TARGETS": json.dumps([123]),
             },
         ):
             settings = load_settings()
             self.assertEqual(settings.caption_template, DEFAULT_CAPTION_TEMPLATE)
-            self.assertEqual(settings.user_sessions, {123: ["default"]})
+            self.assertEqual(settings.admin_user_ids, [123])
+            self.assertEqual(settings.render_config.targets, [123])
             self.assertEqual(settings.fxtwitter_api_base, "https://api.fxtwitter.com")
 
 
