@@ -428,7 +428,7 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
         text_width,
     )
 
-    total_height = CARD_PADDING * 2 + AVATAR_SIZE + 32 + text_height + 32
+    total_height = CARD_PADDING + AVATAR_SIZE + 32 + text_height + 32
     quote_height = 0
     if tweet.quote:
         _, _, quote_height = _measure_quote_block(
@@ -447,6 +447,7 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: Session
         total_height += meta_font.size + 24
     if config.show_stats:
         total_height += meta_font.size + 20
+    total_height += CARD_PADDING
 
     canvas = Image.new("RGB", (CANVAS_WIDTH, total_height), background_color)
     draw = ImageDraw.Draw(canvas)
