@@ -76,25 +76,12 @@ async def sessions_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_html(render_help(settings, update.effective_user.id))
 
 
-def build_caption(template: str, session_name: str, tweet_url: str, user) -> str:
-    user_name = user.full_name if user else "Unknown"
-    username = f"@{user.username}" if user and user.username else "-"
-    return template.format(
-        session=session_name,
-        tweet_url=tweet_url,
-        user_id=user.id if user else "-",
-        user_name=user_name,
-        username=username,
-    )
-
-
 async def send_screenshot(
     *,
     context: ContextTypes.DEFAULT_TYPE,
     session: SessionConfig,
     screenshot_bytes: bytes,
     filename: str,
-    caption: str,
 ) -> None:
     image = Image.open(io.BytesIO(screenshot_bytes))
     width, height = image.size
@@ -109,11 +96,11 @@ async def send_screenshot(
                 width,
                 height,
             )
-            await context.bot.send_document(chat_id=chat_id, document=file_obj, caption=caption)
+            await context.bot.send_document(chat_id=chat_id, document=file_obj)
             continue
 
         try:
-            await context.bot.send_photo(chat_id=chat_id, photo=file_obj, caption=caption)
+            await context.bot.send_photo(chat_id=chat_id, photo=file_obj)
         except BadRequest:
             LOGGER.warning(
                 "send_photo failed for chat_id=%s filename=%s, fallback to send_document",
@@ -121,7 +108,7 @@ async def send_screenshot(
                 filename,
             )
             file_obj = InputFile(io.BytesIO(screenshot_bytes), filename=filename)
-            await context.bot.send_document(chat_id=chat_id, document=file_obj, caption=caption)
+            await context.bot.send_document(chat_id=chat_id, document=file_obj)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -174,13 +161,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         try:
             tweet = client.get_tweet(tweet_url)
             screenshot_bytes = render_tweet_card(tweet, client, session)
-            caption = build_caption(settings.caption_template, session_name, tweet_url, user)
             await send_screenshot(
                 context=context,
                 session=session,
                 screenshot_bytes=screenshot_bytes,
                 filename="tweet-card.png",
-                caption=caption,
             )
             sent_count += 1
         except Exception as exc:
