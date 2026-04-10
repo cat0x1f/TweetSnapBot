@@ -2,14 +2,18 @@ import unittest
 
 from PIL import Image, ImageDraw
 
+from config import RenderConfig
+from fxtwitter import TweetAuthor, TweetData
 from renderer import (
     FONTS_DIR,
     _draw_rich_text,
+    _draw_single_line_text,
     _is_emoji,
     _layout_text,
     _load_font,
     _measure_text_block,
     _segment_text,
+    render_tweet_card,
 )
 
 
@@ -64,6 +68,41 @@ class RendererTests(unittest.TestCase):
         )
         drawn_height = _draw_rich_text(draw, 0, 0, lines, (0, 0, 0))
         self.assertGreaterEqual(measured_height, drawn_height)
+
+    def test_draw_single_line_text_supports_mixed_emoji_name(self) -> None:
+        image = Image.new("RGB", (800, 200), (255, 255, 255))
+        draw = ImageDraw.Draw(image)
+        font = _load_font(40)
+        emoji_font = _load_font(40, emoji=True)
+        height = _draw_single_line_text(draw, 0, 0, "测试🙂昵称", font, emoji_font, (0, 0, 0))
+        self.assertGreater(height, 0)
+
+    def test_render_tweet_card_supports_emoji_in_author_name_and_quote_title(self) -> None:
+        class DummyClient:
+            def download_bytes(self, url: str) -> bytes:
+                raise AssertionError(f"unexpected download: {url}")
+
+        tweet = TweetData(
+            tweet_id="1",
+            url="https://x.com/example/status/1",
+            text="正文🙂",
+            created_at="2026-04-10",
+            author=TweetAuthor(name="作者🙂昵称", screen_name="example"),
+            quote=TweetData(
+                tweet_id="2",
+                url="https://x.com/example/status/2",
+                text="引用内容",
+                author=TweetAuthor(name="引用🙂作者", screen_name="quoted"),
+            ),
+        )
+
+        output = render_tweet_card(
+            tweet,
+            DummyClient(),
+            RenderConfig(targets=[1]),
+        )
+
+        self.assertTrue(output.startswith(b"\x89PNG\r\n\x1a\n"))
 
 
 if __name__ == "__main__":

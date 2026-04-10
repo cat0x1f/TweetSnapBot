@@ -196,6 +196,16 @@ def _measure_text_block(
     return lines, _measure_lines_height(lines, text_font)
 
 
+def _measure_single_line_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    text_font: ImageFont.ImageFont,
+    emoji_font: ImageFont.ImageFont,
+) -> Tuple[List[List[Tuple[str, ImageFont.ImageFont, float]]], int]:
+    lines = [_layout_text(draw, text, text_font, emoji_font, 10**9)[0] if text else []]
+    return lines, _measure_lines_height(lines, text_font)
+
+
 def _font_line_height(font: ImageFont.ImageFont) -> int:
     try:
         ascent, descent = font.getmetrics()
@@ -255,6 +265,21 @@ def _draw_rich_text(
     if not lines:
         return 0
     return cursor_y - y - LINE_SPACING
+
+
+def _draw_single_line_text(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    text: str,
+    text_font: ImageFont.ImageFont,
+    emoji_font: ImageFont.ImageFont,
+    fill,
+) -> int:
+    lines, height = _measure_single_line_text(draw, text, text_font, emoji_font)
+    if lines and lines[0]:
+        _draw_rich_text(draw, x, y, lines, fill)
+    return height
 
 
 def _download_image(client: FxTwitterClient, url: Optional[str], size: Optional[Tuple[int, int]] = None) -> Optional[Image.Image]:
@@ -385,6 +410,7 @@ def _measure_quote_block(
     text_font: ImageFont.ImageFont,
     emoji_font: ImageFont.ImageFont,
     meta_font: ImageFont.ImageFont,
+    meta_emoji_font: ImageFont.ImageFont,
     width: int,
 ) -> Tuple[List[List[Tuple[str, ImageFont.ImageFont, float]]], int, int]:
     quote_lines, quote_text_height = _measure_text_block(
@@ -394,6 +420,10 @@ def _measure_quote_block(
         emoji_font,
         width - 32,
     )
+    title = quote.author.name or "Unknown"
+    if quote.author.screen_name:
+        title = f"{title} @{quote.author.screen_name}"
+    _, title_height = _measure_single_line_text(draw, title, meta_font, meta_emoji_font)
     media_height = 0
     if quote.media:
         if len(quote.media) == 1:
@@ -404,7 +434,7 @@ def _measure_quote_block(
             )
         else:
             media_height = _quote_media_block_height(len(quote.media))
-    total_height = 24 + meta_font.size + 14 + quote_text_height + 20
+    total_height = 24 + title_height + 14 + quote_text_height + 20
     if media_height:
         total_height += media_height + 20
     return quote_lines, quote_text_height, total_height
@@ -421,6 +451,7 @@ def _draw_quote_block(
     text_font: ImageFont.ImageFont,
     emoji_font: ImageFont.ImageFont,
     meta_font: ImageFont.ImageFont,
+    meta_emoji_font: ImageFont.ImageFont,
     primary_color,
     secondary_color,
     border_color,
@@ -432,6 +463,7 @@ def _draw_quote_block(
         text_font,
         emoji_font,
         meta_font,
+        meta_emoji_font,
         width,
     )
     draw.rectangle(
@@ -445,8 +477,16 @@ def _draw_quote_block(
     title = quote.author.name or "Unknown"
     if quote.author.screen_name:
         title = f"{title} @{quote.author.screen_name}"
-    draw.text((x + 16, cursor_y), title, font=meta_font, fill=primary_color)
-    cursor_y += meta_font.size + 14
+    title_height = _draw_single_line_text(
+        draw,
+        x + 16,
+        cursor_y,
+        title,
+        meta_font,
+        meta_emoji_font,
+        primary_color,
+    )
+    cursor_y += title_height + 14
 
     text_height = _draw_rich_text(
         draw,
@@ -504,9 +544,11 @@ def _build_qr_code(data: str, size: int, background_color) -> Image.Image:
 def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: RenderConfig) -> bytes:
     background_color, primary_color, secondary_color, border_color = _theme_colors(config)
     bold_font = _load_font(40, bold=False)
+    bold_emoji_font = _load_font(40, emoji=True)
     body_font = _load_font(36)
     emoji_font = _load_font(36, emoji=True)
     meta_font = _load_font(28)
+    meta_emoji_font = _load_font(28, emoji=True)
 
     probe = Image.new("RGB", (CANVAS_WIDTH, 1200), background_color)
     probe_draw = ImageDraw.Draw(probe)
@@ -547,6 +589,7 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: RenderC
             _load_font(30),
             _load_font(30, emoji=True),
             _load_font(24),
+            _load_font(24, emoji=True),
             text_width,
         )
         total_height += quote_height + 24
@@ -568,10 +611,19 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: RenderC
     canvas.paste(avatar, (CARD_PADDING, CARD_PADDING))
 
     header_x = CARD_PADDING + AVATAR_SIZE + 24
-    draw.text((header_x, CARD_PADDING + 4), tweet.author.name or "Unknown", font=bold_font, fill=primary_color)
+    name_height = _draw_single_line_text(
+        draw,
+        header_x,
+        CARD_PADDING + 4,
+        tweet.author.name or "Unknown",
+        bold_font,
+        bold_emoji_font,
+        primary_color,
+    )
     handle = f"@{tweet.author.screen_name}" if tweet.author.screen_name else ""
     if handle:
-        draw.text((header_x, CARD_PADDING + 54), handle, font=meta_font, fill=secondary_color)
+        handle_y = CARD_PADDING + 4 + name_height + 10
+        draw.text((header_x, handle_y), handle, font=meta_font, fill=secondary_color)
 
     cursor_y = CARD_PADDING + AVATAR_SIZE + 32
     rendered_text_height = _draw_rich_text(
@@ -595,6 +647,7 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: RenderC
             _load_font(30),
             _load_font(30, emoji=True),
             _load_font(24),
+            _load_font(24, emoji=True),
             primary_color,
             secondary_color,
             border_color,
@@ -637,6 +690,7 @@ def render_tweet_card(tweet: TweetData, client: FxTwitterClient, config: RenderC
             _load_font(30),
             _load_font(30, emoji=True),
             _load_font(24),
+            _load_font(24, emoji=True),
             primary_color,
             secondary_color,
             border_color,
