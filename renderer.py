@@ -21,7 +21,7 @@ FONTS_DIR = Path(__file__).resolve().parent / "fonts"
 EXTREME_ASPECT_RATIO = 5.0
 QR_SIZE = 88
 POST_MEDIA_SPACING = 20
-BOTTOM_PADDING = 20
+BOTTOM_PADDING = 32
 
 
 def _load_font(size: int, bold: bool = False, emoji: bool = False) -> ImageFont.ImageFont:
