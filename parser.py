@@ -3,8 +3,28 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 
+# 原生域名以及 FixupX 系的镜像/修复域名，路径结构都是 /{screen_name}/status/{id}
+SUPPORTED_HOSTS = (
+    "x.com",
+    "twitter.com",
+    "fxtwitter.com",
+    "fixupx.com",
+    "fixvx.com",
+    "twittpr.com",
+    "vxtwitter.com",
+    "vxtwitter.com",
+    "twittervx.com",
+    "xfixup.com",
+    "girlcockx.com",
+    "cunnyx.com",
+)
+
+_HOST_ALTERNATION = "|".join(re.escape(host) for host in SUPPORTED_HOSTS)
+
 STATUS_URL_RE = re.compile(
-    r"https?://(?:www\.)?(?:x\.com|twitter\.com)/(?P<screen_name>[A-Za-z0-9_]+)/status/(?P<status_id>\d+)",
+    r"https?://(?:[A-Za-z0-9-]+\.)*(?:"
+    + _HOST_ALTERNATION
+    + r")/(?P<screen_name>[A-Za-z0-9_]+)/status(?:es)?/(?P<status_id>\d+)",
     re.IGNORECASE,
 )
 

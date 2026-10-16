@@ -35,7 +35,7 @@ def render_help(settings: Settings, user_id: int) -> str:
     return (
         "发送推文链接即可截图。\n\n"
         "用法：\n"
-        "1. 直接发送 x.com / twitter.com 的 status 链接\n"
+        "1. 直接发送 x.com / twitter.com / fixupx.com 等链接\n"
         "2. 一条消息里可以带多个链接\n"
         "3. 机器人会把截图投递到预设目标 chat\n\n"
         f"当前管理员白名单数量：{len(settings.admin_user_ids)}"
@@ -120,7 +120,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not parsed.tweet_urls:
         await context.bot.send_message(
             chat_id=chat.id,
-            text="没有识别到推文链接。发送 x.com / twitter.com 的 status 链接即可。",
+            text="没有识别到推文链接。发送 x.com / twitter.com / fixupx.com 等链接即可。",
             reply_to_message_id=message.message_id,
         )
         return

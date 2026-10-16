@@ -20,6 +20,21 @@ class FxTwitterTests(unittest.TestCase):
             timeout=30,
         )
 
+    @patch("fxtwitter.requests.Session.get")
+    def test_get_tweet_accepts_fixupx_url(self, mock_get) -> None:
+        response = MagicMock()
+        response.json.return_value = {"tweet": {"id": "123", "author": {}, "media": []}}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        client = FxTwitterClient("https://api.fxtwitter.com")
+        client.get_tweet("https://fixupx.com/example/status/123")
+
+        mock_get.assert_called_once_with(
+            "https://api.fxtwitter.com/example/status/123",
+            timeout=30,
+        )
+
     def test_parse_tweet_data(self) -> None:
         client = FxTwitterClient("https://api.fxtwitter.com")
         payload = {

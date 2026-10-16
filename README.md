@@ -70,7 +70,7 @@ python3 main.py
 
 ## 当前实现范围
 
-- 支持 `x.com` / `twitter.com` 的 `status` 链接解析
+- 支持 `x.com` / `twitter.com` / `fixupx.com` / `fxtwitter.com` / `vxtwitter.com` / `fixvx.com` / `twittpr.com` 等 `status` 链接解析
 - 通过 FxTwitter/FixupX 状态接口拉取 tweet 元数据
 - 在本地用 Pillow 生成 PNG 卡片，不使用 Playwright
 - 暂不做数据库持久化；投递目标和渲染配置全部来自环境变量
